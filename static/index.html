@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Splitter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        form, #rules {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input, button, select {
+            padding: 10px;
+            font-size: 16px;
+        }
+        .rule {
+            display: flex;
+            gap: 10px;
+        }
+        #result {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Splitter</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf" required>
+        <div id="rules"></div>
+        <button type="button" onclick="addRule()">Add Rule</button>
+        <button type="submit">Split PDF</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        let ruleCount = 0;
+
+        function addRule() {
+            const rulesDiv = document.getElementById('rules');
+            const ruleDiv = document.createElement('div');
+            ruleDiv.className = 'rule';
+            ruleDiv.innerHTML = `
+                <select name="rule_type_${ruleCount}">
+                    <option value="contains">Contains</option>
+                    <option value="not_contains">Does not contain</option>
+                </select>
+                <input type="text" name="rule_text_${ruleCount}" placeholder="Enter text" required>
+                <button type="button" onclick="removeRule(this)">Remove</button>
+            `;
+            rulesDiv.appendChild(ruleDiv);
+            ruleCount++;
+        }
+
+        function removeRule(button) {
+            button.parentElement.remove();
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const formData = new FormData(e.target);
+			const resultDiv = document.getElementById('result');
+			resultDiv.textContent = 'Processing...';
+
+			// Collect rules
+			const rules = [];
+			for (let i = 0; i < ruleCount; i++) {
+				const typeInput = formData.get(`rule_type_${i}`);
+				const textInput = formData.get(`rule_text_${i}`);
+				if (typeInput && textInput) {
+					rules.push({ type: typeInput, text: textInput });
+				}
+			}
+
+			formData.set('rules', JSON.stringify(rules));
+
+			try {
+				const response = await fetch('/upload', {
+					method: 'POST',
+					body: formData
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					resultDiv.textContent = `PDF split successfully! Created ${data.num_pdfs} PDF(s) with a total of ${data.total_pages} pages.`;
+					
+					// Trigger download
+					const downloadLink = document.createElement('a');
+					downloadLink.href = data.download_url;
+					downloadLink.download = 'split_pdfs.zip';
+					document.body.appendChild(downloadLink);
+					downloadLink.click();
+					document.body.removeChild(downloadLink);
+				} else {
+					const errorData = await response.json();
+					resultDiv.textContent = `Error splitting PDF: ${errorData.detail}`;
+				}
+			} catch (error) {
+				console.error('Error:', error);
+				resultDiv.textContent = 'An error occurred. Please try again.';
+			}
+		});
+
+        // Add an initial rule
+        addRule();
+    </script>
+</body>
+</html>
