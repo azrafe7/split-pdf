@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List
+from typing import List, Union, Dict
 import fitz  # PyMuPDF
 import io
 import zipfile
@@ -14,21 +14,40 @@ app = FastAPI()
 # Serve static files (HTML, CSS, JS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class Rule(BaseModel):
+class Condition(BaseModel):
     type: str  # "contains" or "not_contains"
     text: str
 
+class Rule(BaseModel):
+    operator: str  # "AND", "OR", "NOT"
+    conditions: List[Union[Condition, 'Rule']]
+    
 class SplitRequest(BaseModel):
     rules: List[Rule]
 
 # Global variable to store the zip file in memory
 zip_buffer = None
 
+def evaluate_rule(rule: Union[Condition, Rule], page_text: str) -> bool:
+    if isinstance(rule, Condition):
+        if rule.type == "contains":
+            return rule.text.lower() in page_text
+        elif rule.type == "not_contains":
+            return rule.text.lower() not in page_text
+    elif isinstance(rule, Rule):
+        if rule.operator == "AND":
+            return all(evaluate_rule(condition, page_text) for condition in rule.conditions)
+        elif rule.operator == "OR":
+            return any(evaluate_rule(condition, page_text) for condition in rule.conditions)
+        elif rule.operator == "NOT":
+            return not evaluate_rule(rule.conditions[0], page_text)
+    return False
+    
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
     global zip_buffer
     # Parse the rules
-    rules = json.loads(rules)
+    rules = json.loads(rules, object_hook=lambda d: Rule(**d) if 'operator' in d else Condition(**d))
 
     # Read the PDF file into memory
     pdf_content = await file.read()
@@ -49,17 +68,13 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
     for page_num in range(num_pages):
         page = doc[page_num]
         text = page.get_text().lower()
-        for rule in rules:
-            if (rule['type'] == 'contains' and rule['text'].lower() in text) or \
-               (rule['type'] == 'not_contains' and rule['text'].lower() not in text):
-                split_points.append(page_num)
-                break
+        if evaluate_rule(rules, text):
+            split_points.append(page_num)
 
-    # Add the last page as a split point if it's not already included
-    if doc.page_count - 1 not in split_points:
-        split_points.append(num_pages - 1)
+
+    # Add the page after the last page as a split point (to ensure all pages are processed)
     split_points.append(num_pages)
-
+    
     # Remove duplicates and sort
     split_points = sorted(list(set(split_points)))
 

@@ -17,21 +17,46 @@
             gap: 10px;
         }
         input, button, select {
-            padding: 10px;
-            font-size: 16px;
+            padding: 8px;
+            font-size: 14px;
         }
         .rule {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .rule-header {
             display: flex;
             gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .conditions {
+            margin-left: 20px;
+        }
+        .condition {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .nested-rules {
+            margin-left: 20px;
         }
         #result {
             margin-top: 20px;
             font-weight: bold;
         }
+        @media (max-width: 600px) {
+            .rule-header, .condition {
+                flex-wrap: wrap;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>PDF Splitter</h1>
+    <h1>PDF Splitter with Boolean Logic</h1>
     <form id="uploadForm" enctype="multipart/form-data">
         <input type="file" name="file" accept=".pdf" required>
         <div id="rules"></div>
@@ -42,71 +67,132 @@
 
     <script>
         let ruleCount = 0;
+        let conditionCount = 0;
 
-        function addRule() {
-            const rulesDiv = document.getElementById('rules');
+        function addRule(parentId = 'rules') {
+            const rulesDiv = document.getElementById(parentId);
             const ruleDiv = document.createElement('div');
             ruleDiv.className = 'rule';
+            ruleDiv.id = `rule_${ruleCount}`;
             ruleDiv.innerHTML = `
-                <select name="rule_type_${ruleCount}">
-                    <option value="contains">Contains</option>
-                    <option value="not_contains">Does not contain</option>
-                </select>
-                <input type="text" name="rule_text_${ruleCount}" placeholder="Enter text" required>
-                <button type="button" onclick="removeRule(this)">Remove</button>
+                <div class="rule-header">
+                    <select name="rule_operator_${ruleCount}" onchange="updateRule(this)">
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                        <option value="NOT">NOT</option>
+                    </select>
+                    <button type="button" onclick="addCondition('${ruleDiv.id}')">Add Condition</button>
+                    <button type="button" onclick="addRule('${ruleDiv.id}_nested')">Add Nested Rule</button>
+                    <button type="button" onclick="removeRule(this)">Remove Rule</button>
+                </div>
+                <div class="conditions" id="${ruleDiv.id}_conditions"></div>
+                <div class="nested-rules" id="${ruleDiv.id}_nested"></div>
             `;
             rulesDiv.appendChild(ruleDiv);
+            addCondition(`${ruleDiv.id}_conditions`);
             ruleCount++;
         }
 
+        function addCondition(containerId) {
+            const conditionsDiv = document.getElementById(containerId);
+            const conditionDiv = document.createElement('div');
+            conditionDiv.className = 'condition';
+            conditionDiv.innerHTML = `
+                <select name="condition_type_${conditionCount}">
+                    <option value="contains">Contains</option>
+                    <option value="not_contains">Does not contain</option>
+                </select>
+                <input type="text" name="condition_text_${conditionCount}" placeholder="Enter text" required>
+                <button type="button" onclick="removeCondition(this)">Remove</button>
+            `;
+            conditionsDiv.appendChild(conditionDiv);
+            conditionCount++;
+        }
+
         function removeRule(button) {
-            button.parentElement.remove();
+            button.closest('.rule').remove();
+        }
+
+        function removeCondition(button) {
+            button.closest('.condition').remove();
+        }
+
+        function updateRule(select) {
+            const ruleDiv = select.closest('.rule');
+            const conditionsDiv = ruleDiv.querySelector('.conditions');
+            const nestedRulesDiv = ruleDiv.querySelector('.nested-rules');
+            
+            if (select.value === 'NOT') {
+                // Keep only the first condition/rule for NOT operator
+                while (conditionsDiv.children.length > 1) {
+                    conditionsDiv.removeChild(conditionsDiv.lastChild);
+                }
+                nestedRulesDiv.innerHTML = '';
+                // Disable "Add Condition" and "Add Nested Rule" buttons
+                ruleDiv.querySelector('button[onclick^="addCondition"]').disabled = true;
+                ruleDiv.querySelector('button[onclick^="addRule"]').disabled = true;
+            } else {
+                // Enable "Add Condition" and "Add Nested Rule" buttons
+                ruleDiv.querySelector('button[onclick^="addCondition"]').disabled = false;
+                ruleDiv.querySelector('button[onclick^="addRule"]').disabled = false;
+            }
+        }
+
+        function collectRules(ruleDiv) {
+            const operator = ruleDiv.querySelector('select[name^="rule_operator"]').value;
+            const conditions = [];
+            
+            const conditionsDiv = ruleDiv.querySelector('.conditions');
+            for (const child of conditionsDiv.children) {
+                const type = child.querySelector('select[name^="condition_type"]').value;
+                const text = child.querySelector('input[name^="condition_text"]').value;
+                conditions.push({ type, text });
+            }
+
+            const nestedRulesDiv = ruleDiv.querySelector('.nested-rules');
+            for (const child of nestedRulesDiv.children) {
+                conditions.push(collectRules(child));
+            }
+            
+            return { operator, conditions };
         }
 
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-			e.preventDefault();
-			const formData = new FormData(e.target);
-			const resultDiv = document.getElementById('result');
-			resultDiv.textContent = 'Processing...';
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = 'Processing...';
 
-			// Collect rules
-			const rules = [];
-			for (let i = 0; i < ruleCount; i++) {
-				const typeInput = formData.get(`rule_type_${i}`);
-				const textInput = formData.get(`rule_text_${i}`);
-				if (typeInput && textInput) {
-					rules.push({ type: typeInput, text: textInput });
-				}
-			}
+            // Collect rules
+            const rules = collectRules(document.getElementById('rules').firstChild);
+            formData.set('rules', JSON.stringify(rules));
 
-			formData.set('rules', JSON.stringify(rules));
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
 
-			try {
-				const response = await fetch('/upload', {
-					method: 'POST',
-					body: formData
-				});
-
-				if (response.ok) {
-					const data = await response.json();
+                if (response.ok) {
+                    const data = await response.json();
 					resultDiv.textContent = `${data.message}! Created ${data.num_pdfs} PDF(s) with a total of ${data.total_pages} pages.`;
-					
-					// Trigger download
-					const downloadLink = document.createElement('a');
-					downloadLink.href = data.download_url;
-					downloadLink.download = 'split_pdfs.zip';
-					document.body.appendChild(downloadLink);
-					downloadLink.click();
-					document.body.removeChild(downloadLink);
-				} else {
-					const errorData = await response.json();
-					resultDiv.textContent = `Error splitting PDF: ${errorData.detail}`;
-				}
-			} catch (error) {
-				console.error('Error:', error);
-				resultDiv.textContent = 'An error occurred. Please try again.';
-			}
-		});
+                    
+                    // Trigger download
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = data.download_url;
+                    downloadLink.download = 'split_pdfs.zip';
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.textContent = `Error splitting PDF: ${errorData.detail}`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.textContent = 'An error occurred. Please try again.';
+            }
+        });
 
         // Add an initial rule
         addRule();
