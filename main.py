@@ -22,9 +22,6 @@ class Rule(BaseModel):
     operator: str  # "AND", "OR", "NOT"
     conditions: List[Union[Condition, 'Rule']]
     
-class SplitRequest(BaseModel):
-    rules: List[Rule]
-
 # Global variable to store the zip file in memory
 zip_buffer = None
 

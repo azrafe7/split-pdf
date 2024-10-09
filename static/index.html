@@ -56,9 +56,10 @@
     </style>
 </head>
 <body>
-    <h1>PDF Splitter with Boolean Logic</h1>
+    <h1>PDF Splitter</h1>
     <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".pdf" required>
+        <input type="file" name="file" accept=".pdf" required onchange="countPages(this)">
+        <div id="pageCount"></div>
         <div id="rules"></div>
         <button type="button" onclick="addRule()">Add Rule</button>
         <button type="submit">Split PDF</button>
@@ -159,6 +160,15 @@
             return { operator, conditions };
         }
 
+        async function countPages(input) {
+            const file = input.files[0];
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                document.getElementById('pageCount').textContent = `Number of pages: ${pdf.numPages}`;
+            }
+        }
+
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -199,5 +209,6 @@
         // Add an initial rule
         addRule();
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
 </body>
 </html>
