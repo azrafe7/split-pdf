@@ -47,7 +47,11 @@ def evaluate_rule(rule: Union[Condition, Rule], page_text: str) -> bool:
 async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
     global zip_buffer
     # Parse the rules
-    rules = json.loads(rules, object_hook=lambda d: Rule(**d) if 'operator' in d else Condition(**d))
+    print(f"Rules: {rules}")
+    if rules == '{}':
+        rules = {}
+    else:
+        rules = json.loads(rules, object_hook=lambda d: Rule(**d) if 'operator' in d else Condition(**d))
 
     # Read the PDF file into memory
     pdf_content = await file.read()
@@ -111,12 +115,14 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
         message += f' (only first {MAX_PAGES} pages processed)'
     
     # Return the zip file and the number of output PDFs
-    return JSONResponse({
+    response = {
         "message": message,
         "num_pdfs": len(output_pdfs),
         "total_pages": total_output_pages,
         "download_url": "/download-zip"
-    })
+    }
+    print(response)
+    return JSONResponse(response)
 
 @app.get("/download-zip")
 async def download_zip():

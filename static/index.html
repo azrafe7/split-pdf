@@ -139,7 +139,9 @@
         }
 
         function collectRules(ruleDiv) {
-            const operator = ruleDiv.querySelector('select[name^="rule_operator"]').value;
+            if (!ruleDiv) return {};
+			
+			const operator = ruleDiv.querySelector('select[name^="rule_operator"]').value;
             const conditions = [];
             
             const conditionsDiv = ruleDiv.querySelector('.conditions');
