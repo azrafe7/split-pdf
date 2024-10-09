@@ -42,8 +42,11 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
     # Initialize variables
     split_points = [0]  # Always start with the first page
 
+    MAX_PAGES = 1000
+    num_pages = min(doc.page_count, MAX_PAGES)
+
     # Find split points
-    for page_num in range(doc.page_count):
+    for page_num in range(num_pages):
         page = doc[page_num]
         text = page.get_text().lower()
         for rule in rules:
@@ -54,8 +57,8 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
 
     # Add the last page as a split point if it's not already included
     if doc.page_count - 1 not in split_points:
-        split_points.append(doc.page_count - 1)
-    split_points.append(doc.page_count)
+        split_points.append(num_pages - 1)
+    split_points.append(num_pages)
 
     # Remove duplicates and sort
     split_points = sorted(list(set(split_points)))
@@ -63,7 +66,6 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
     # Create split PDFs in memory
     output_pdfs = []
     total_output_pages = 0
-    # breakpoint()
     for i in range(len(split_points) - 1):
         start_page = split_points[i]
         end_page = split_points[i + 1]
@@ -89,9 +91,13 @@ async def upload_pdf(file: UploadFile = File(...), rules: str = Form(...)):
 
     zip_buffer.seek(0)
 
+    message = "PDF split successfully"
+    if doc.page_count > MAX_PAGES:
+        message += f' (only first {MAX_PAGES} pages processed)'
+    
     # Return the zip file and the number of output PDFs
     return JSONResponse({
-        "message": "PDF split successfully",
+        "message": message,
         "num_pdfs": len(output_pdfs),
         "total_pages": total_output_pages,
         "download_url": "/download-zip"

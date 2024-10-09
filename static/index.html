@@ -89,7 +89,7 @@
 
 				if (response.ok) {
 					const data = await response.json();
-					resultDiv.textContent = `PDF split successfully! Created ${data.num_pdfs} PDF(s) with a total of ${data.total_pages} pages.`;
+					resultDiv.textContent = `${data.message}! Created ${data.num_pdfs} PDF(s) with a total of ${data.total_pages} pages.`;
 					
 					// Trigger download
 					const downloadLink = document.createElement('a');
